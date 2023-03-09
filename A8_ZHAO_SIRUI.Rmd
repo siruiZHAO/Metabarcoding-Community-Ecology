@@ -1,0 +1,151 @@
+---
+title: "Assignment 8"
+author: "SiruiZHAO"
+date: "2023-03-08"
+output: html_document
+---
+
+#### [My GitHub](https://github.com/siruiZHAO/Metabarcoding-Community-Ecology.git)
+
+#### Load Library
+
+```{r message=FALSE, warning=FALSE}
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(ape)
+library(ggtree)
+library(reshape2)
+library(vegan)
+```
+
+#### Import/inspect Data
+
+```{r}
+#data import
+mydata <- read.csv("./Data/FloristicSurvey.csv")
+
+#check data
+str(mydata)
+```
+
+```{r}
+mydata$Population <- as.character(mydata$Population)
+```
+
+#### Analysis
+
+##### Data Selection
+
+```{r}
+#how the communities of plants differ across sample locations
+#select species and make Quadrate as row names
+data1 <- mydata %>%
+  select(11:44) 
+row.names(data1) <- mydata$Quadrate
+```
+
+##### Binary Distance Matrix
+
+```{r}
+BinDat<-data1
+for(row in 1:nrow(data1)){
+  for(col in 1:ncol(data1)){
+    if(BinDat[row,col]>0){
+      BinDat[row,col]<-1
+    }
+  }
+}
+head(BinDat)
+```
+
+##### Neighbor-Joining
+
+```{r}
+#pairwise distance of the binary matrix
+BinDist <- dist(BinDat, method = 'binary')
+
+#NJ tree
+tree <- nj(BinDist)
+ggtree(tree, layout = "rectangular") %<+% mydata +
+  geom_tiplab()
+```
+
+##### Bray-Curtis dissimilarity
+
+```{r}
+Dat_dist <- vegdist(data1, method = "bray", binary = F)
+Tree_2 <- nj(Dat_dist)
+ggtree(Tree_2, layout = "rectangular") %<+% mydata +
+  geom_tiplab()
+```
+
+These two tree topology have some differences. And not like the first one, the one in the Bray-Curtis section organize the tree based on how different the group are from each other. So, we would like to use the second one in our analysis.
+
+##### NJ tree Group by garlic presence
+
+```{r}
+#point out the location and population of garlic mustard
+present <- gsub(".*([o|i]).*", "\\1", Tree_2$tip.label)
+population <- gsub("(.*)[o|i].*", "\\1", Tree_2$tip.label)
+
+#group tip labels
+PreGroups <- split(Tree_2$tip.label, present)
+PopuGroups <- split(Tree_2$tip.label, population)
+
+#apply group to plot
+PreDTcol <- groupOTU(Tree_2, PreGroups)
+PopuDTcol <- groupOTU(Tree_2, PopuGroups)
+```
+
+```{r fig.align='center'}
+#plot
+P1 <- ggtree(PreDTcol, layout = "rectangular", aes(color = group)) +
+  geom_tiplab(size = 2) +
+  scale_color_manual(name = "Garlic Mustard Patches",
+                     values = rainbow(2),
+                     labels = c("Inside", "Outside"))
+P2 <- ggtree(PopuDTcol, layout = "rectangular", aes(color = group)) +
+  geom_tiplab(size = 2) +
+  scale_color_manual(name = "Population",
+                     values = rainbow(5),
+                     labels = c("1", "3", "7", "13", "14"))
+figure1 <- ggarrange(P1, P2, labels = c("A", "B"), ncol = 1, nrow = 2)
+figure1
+```
+
+Figure 1: Neighbor-Joining Tree that clusters smples based on the similarity of species abundance. A) Different colors represent whether quadrate measurements are taken inside (red) or outside (blue) of garlic mustard patches. B) Different colors represent a specific sampling location at QUBS, determined by presence of garlic mustard nearby.
+
+##### NMDS analysis
+
+```{r}
+set.seed(20)
+NMDSdat <- metaMDS(Dat_dist, k = 2, trymax = 100)
+```
+
+```{r}
+#create data for plotting
+PDat <- data.frame(NMDS1 = NMDSdat$points[,1],
+                   NMDS2 = NMDSdat$points[,2],
+                   Quadrate = row.names(data1))
+
+#add species labels
+PDat <- merge(PDat, mydata, by = "Quadrate", all.x = T, all.y = F)
+```
+
+```{r fig.align='center'}
+#plot
+qplot(x = NMDS1, y = NMDS2, color = Population, shape = Location, 
+      alpha = I(0.6), data = PDat) +
+  theme_bw()
+```
+
+Figure 2: Non_Metric Multidimensional Scaling to visualize similarity and differences among species abundance.
+
+#### Report
+
+Garlic mustard is an invasive plant in ON, CA. it can reduce the biodiversity and aesthetic value of natural areas. In this study, the data collected from 5 different locations (Populations) at QUBS, which were determined by the presence of garlic mustard nearby, and grouped by the location, which indicates whether Quadrate measurements are taken 'i' for 'inside' or 'o' for 'outside' of garlic mustard patches.
+
+During our analysis, we select the 34 species present at all sites and Quadrate code. The data were grouped by "Population" and "Location" to compare if the presence of garlic mustard influences the species' abundance. The results show that the presence of garlic mustard can drive the differentiation of species abundance in the local communities (Figure 1(A)(B)). In the NMDS analysis, data in different "Locations" impact the local communities more, which can be determined by the distance between each point (Figure 2).
+
+#### Thanks!
